@@ -8,27 +8,33 @@ import (
 )
 
 type Base struct {
-	CTX     context.Context
 	IPCNode IPCNode
 	Name    string
 
+	context  context.Context
 	commands map[string]IPCHandler
 }
 
 func (b *Base) Init(rxIn chan IPCMessage) chan IPCMessage {
 	b.IPCNode.RX = rxIn
 	b.IPCNode.TX = make(chan IPCMessage, MIN_BUFFER)
+	b.commands = make(map[string]IPCHandler)
 
 	return b.IPCNode.TX
 }
 
 func (b *Base) Attach(ctx context.Context) {
-	select {
-	case m := <-b.IPCNode.RX:
-		go b.ProcessEvent(m)
+	b.context = ctx
 
-	case <-ctx.Done():
-		log.Printf("[%s] shutting down...", b.Name)
+	for {
+		select {
+		case m := <-b.IPCNode.RX:
+			go b.ProcessEvent(m)
+
+		case <-b.context.Done():
+			log.Printf("[%s] shutting down...", b.Name)
+			return
+		}
 	}
 }
 
@@ -51,7 +57,8 @@ func (b *Base) Logf(format string, args ...interface{}) {
 	log.Printf(fmat+"\n", args...)
 
 	b.SendMessage(IPCMessage{
-		Destination: "LOG",
+		Destination: HUB,
+		Command:     LOG,
 		Message:     fmt.Sprintf(fmat, args...),
 	})
 }

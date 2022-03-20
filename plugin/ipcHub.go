@@ -13,7 +13,6 @@ type IPCNodeContext struct {
 type IPCHub struct {
 	Nodes   map[string]IPCNodeContext
 	MainHub IPCNode
-	Log     log.Logger
 	Context context.Context
 }
 
@@ -27,8 +26,8 @@ func NewIPCHub(ctx context.Context) *IPCHub {
 	}
 }
 
-func (h *IPCHub) Register(name string, node IPCNode) {
-	ctx, cancelFunc := context.WithCancel(context.Background())
+func (h *IPCHub) Register(name string, node IPCNode, ctxIn context.Context) {
+	ctx, cancelFunc := context.WithCancel(ctxIn)
 	h.Nodes[name] = IPCNodeContext{
 		IPCNode: node,
 		Cancel:  cancelFunc,
@@ -38,33 +37,40 @@ func (h *IPCHub) Register(name string, node IPCNode) {
 }
 
 func (h *IPCHub) Process(mainHandler IPCHandler) {
-	select {
-	case m := <-h.MainHub.RX:
-		go mainHandler(m)
-		h.BroadcastMessage(m)
+	for {
+		select {
+		case m := <-h.MainHub.RX:
+			go mainHandler(m)
+			h.BroadcastMessage(m)
 
-	case <-h.Context.Done():
-		log.Println("[IPC Hub]: shutting down")
+		case <-h.Context.Done():
+			log.Println("[IPC Hub]: shutting down")
 
-		for _, v := range h.Nodes {
-			v.Cancel()
+			for k, v := range h.Nodes {
+				log.Printf("[IPC Hub] canceling %s\n", k)
+				v.Cancel()
+			}
+
+			return
 		}
 	}
 }
 
 func (h *IPCHub) listen(ctx context.Context, ipxRX chan IPCMessage) {
-	select {
-	case m := <-ipxRX:
-		h.MainHub.RX <- m
-	case <-ctx.Done():
-		return
+	for {
+		select {
+		case m := <-ipxRX:
+			h.MainHub.RX <- m
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
 func (h *IPCHub) BroadcastMessage(m IPCMessage) {
-	h.Log.Println("[IPC Broadcast]:", m)
-
 	for _, v := range h.Nodes {
 		v.TX <- m
 	}
+
+	log.Printf("[IPC-Broadcast]: from [%s] {%s}", m.Sender, m)
 }

@@ -14,5 +14,5 @@ type IPCMessage struct {
 }
 
 func (m IPCMessage) String() string {
-	return fmt.Sprintf("[IPC]: [%s] %s", m.Destination, m.Message)
+	return fmt.Sprintf("{%s} [%s] %s", IPCCommandStrings[m.Command], m.Destination, m.Message)
 }

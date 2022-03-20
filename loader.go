@@ -21,20 +21,21 @@ func init() {
 	plugins = make(map[string]pluginData)
 
 	plugins["api"] = pluginData{
-		Filename: "./plugins/api.so",
+		Filename: "./api/api.so",
 	}
-	plugins["discord"] = pluginData{
-		Filename: "./plugins/discord.so",
+	plugins["discordcalendar"] = pluginData{
+		Filename: "./discordcalendar/discord.so",
 	}
-	plugins["calendar"] = pluginData{
-		Filename: "./plugins/calendar.so",
-	}
-	plugins["quickchat"] = pluginData{
-		Filename: "./plugins/quickchat.so",
-	}
+
+	//plugins["calendar"] = pluginData{
+	//	Filename: "./plugins/calendar.so",
+	//}
+	//plugins["quickchat"] = pluginData{
+	//	Filename: "./plugins/quickchat.so",
+	//}
 }
 
-func LoadPlugins() {
+func LoadPlugins(hub *plugin.IPCHub) {
 	for k, v := range plugins {
 		instance, err := plugin.Load(v.Filename)
 		if err != nil {
@@ -45,7 +46,8 @@ func LoadPlugins() {
 		v.Instance = instance
 		v.IPC.TX = make(chan plugin.IPCMessage, plugin.MIN_BUFFER)
 		v.IPC.RX = (*instance).Init(v.IPC.TX)
-		v.Context, v.CancelFunc = context.WithCancel(context.Background())
+		hub.Register(k, v.IPC, hub.Context)
+		v.Context, v.CancelFunc = context.WithCancel(hub.Context)
 		(*instance).Attach(v.Context)
 	}
 }

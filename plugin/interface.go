@@ -12,8 +12,6 @@ type Interface interface {
 	Unload() int
 }
 
-type Export func() *Interface
-
 func Load(filename string) (*Interface, error) {
 	p, err := plugin.Open(filename)
 	if err != nil {
@@ -25,12 +23,12 @@ func Load(filename string) (*Interface, error) {
 		return nil, err
 	}
 
-	exportFunc, ok := symExport.(Export)
+	exportFunc, ok := symExport.(func() Interface)
 	if !ok {
 		return nil, errors.New("unexpected type from module symbol")
 	}
 
 	pluginInstance := exportFunc()
 
-	return pluginInstance, nil
+	return &pluginInstance, nil
 }

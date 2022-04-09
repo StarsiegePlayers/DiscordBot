@@ -1,4 +1,5 @@
 DiscordBot
+*.json
 ### NotepadPP template
 # Notepad++ backups #
 *.bak

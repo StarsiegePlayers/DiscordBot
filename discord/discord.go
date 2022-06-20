@@ -2,7 +2,6 @@ package discord
 
 import (
 	"fmt"
-	"golang.org/x/exp/slices"
 	"strings"
 	"sync"
 	"time"
@@ -19,7 +18,7 @@ const (
 	DefaultCommandPrefix = "!"
 )
 
-type MessageHandler func(*discordgo.Session, *discordgo.MessageCreate)
+type MessageHandler func(*discordgo.Session, *discordgo.MessageCreate, string)
 
 type Service struct {
 	module.Base
@@ -38,15 +37,16 @@ func (s *Service) Init() {
 	// queue waiting on config
 	s.wg.Add(1)
 
-	s.loadFiles()
+	s.loadDataFiles()
 
 	s.commands = make(map[string]MessageHandler)
-	s.commands["init"] = s.initHandler
-	s.commands["ping"] = s.pingHandler
-	s.commands["ls"] = s.lsHandler
-	s.commands["qc"] = s.qcHandler
-	s.commands["slap"] = s.slapHandler
-	s.commands["eledore"] = s.eledoreHandler
+	s.commands["init"] = s.messageLogger(s.initHandler)
+	s.commands["commands"] = s.messageLogger(s.commandsHandler)
+	s.commands["help"] = s.messageLogger(s.commandsHandler)
+	s.commands["ping"] = s.messageLogger(s.pingHandler)
+	s.commands["ls"] = s.messageLogger(s.lsHandler)
+	s.commands["qc"] = s.messageLogger(s.qcHandler)
+	s.commands["slap"] = s.messageLogger(s.slapHandler)
 
 	s.PubSubSubscribe(rpc.DiscordMessageSendTopic, s.discordMessageSendPubSubHandler)
 	s.PubSubSubscribe(rpc.APIRequestResponse, s.APIRequestResponsePubSubHandler)
@@ -66,11 +66,6 @@ func (s *Service) Start() (err error) {
 	s.session.AddHandler(s.messageDispatcher)
 
 	s.session.Identify.Intents = discordgo.IntentsAll
-
-	err = s.PubSubPublish(rpc.APIRequestLatest, []byte{})
-	if err != nil {
-		return
-	}
 
 	err = s.session.Open()
 	if err != nil {
@@ -99,20 +94,26 @@ func (s *Service) isMentioned(input []*discordgo.User, compare *discordgo.User) 
 	return false
 }
 
+func (s *Service) messageLogger(fn MessageHandler) MessageHandler {
+	return func(d *discordgo.Session, m *discordgo.MessageCreate, payload string) {
+		guild, _ := d.State.Guild(m.GuildID)
+		channel, _ := d.State.Channel(m.ChannelID)
+
+		s.Logf("(%s) [#%s] <%s>: %s", guild.Name, channel.Name, m.Author.Username+"#"+m.Author.Discriminator, m.Content)
+
+		fn(d, m, payload)
+	}
+}
+
 func (s *Service) messageDispatcher(d *discordgo.Session, m *discordgo.MessageCreate) {
 	// Ignore all messages created by the bot itself
 	if m.Author.ID == d.State.User.ID {
 		return
 	}
 
-	if slices.Contains(m.Member.Roles, s.config.Guilds[m.GuildID].TimeoutConfig.TimeoutRoleID) {
-		timePlusDuration := time.Now().Add(time.Duration(s.config.Guilds[m.GuildID].TimeoutConfig.TimeoutTTL) * time.Second)
-		err := s.session.GuildMemberTimeout(m.GuildID, m.Author.ID, &timePlusDuration)
-
-		if err != nil {
-			s.Logln(err)
-		}
-
+	// should we enforce moderation?
+	if s.PerformModeration(d, m) {
+		// moderation was performed
 		return
 	}
 
@@ -120,12 +121,28 @@ func (s *Service) messageDispatcher(d *discordgo.Session, m *discordgo.MessageCr
 	if _, ok := s.config.Guilds[m.GuildID]; (ok && strings.HasPrefix(m.Content, s.config.Guilds[m.GuildID].CommandPrefix)) ||
 		(s.isMentioned(m.Mentions, d.State.User)) ||
 		(!ok && strings.HasPrefix(m.Content, DefaultCommandPrefix+"init")) {
-		command := strings.SplitN(m.Content, " ", 2)[0]
-		command = strings.ToLower(command)[1:]
+
+		content := m.Content
+
+		if s.isMentioned(m.Mentions, d.State.User) {
+			content = strings.ReplaceAll(content, d.State.User.Mention(), "")
+			content = strings.TrimSpace(content)
+		}
+
+		command := strings.SplitN(content, " ", 2)[0]
+		content = strings.TrimPrefix(content, command)
+
+		content = strings.TrimSpace(content)
+		command = strings.ToLower(command)
+
+		if strings.HasPrefix(command, s.config.Guilds[m.GuildID].CommandPrefix) {
+			command = strings.TrimPrefix(command, s.config.Guilds[m.GuildID].CommandPrefix)
+			command = strings.TrimSpace(command)
+		}
 
 		// dispatch message to correct function, if registered
 		if fn, ok := s.commands[command]; ok {
-			go fn(d, m)
+			go fn(d, m, content)
 		}
 	}
 }

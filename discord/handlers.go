@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
+	"golang.org/x/exp/maps"
 	"io"
 	"math/big"
 	"net/http"
@@ -11,7 +12,6 @@ import (
 	"strings"
 	"text/template"
 
-	embed "github.com/Clinet/discordgo-embed"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -20,11 +20,22 @@ type SlapTemplateData struct {
 	Target string
 }
 
-func (s *Service) initHandler(d *discordgo.Session, m *discordgo.MessageCreate) {
+func (s *Service) initHandler(d *discordgo.Session, m *discordgo.MessageCreate, payload string) {
 
 }
 
-func (s *Service) pingHandler(d *discordgo.Session, m *discordgo.MessageCreate) {
+func (s *Service) commandsHandler(d *discordgo.Session, m *discordgo.MessageCreate, payload string) {
+	if len(payload) <= 1 {
+		message := m.Author.Mention() + " Commands: " + strings.Join(maps.Keys(s.commands), ", ")
+		_, err := s.session.ChannelMessageSend(m.ChannelID, message)
+		if err != nil {
+			s.Logln(err)
+			return
+		}
+	}
+}
+
+func (s *Service) pingHandler(d *discordgo.Session, m *discordgo.MessageCreate, payload string) {
 	dm, err := d.UserChannelCreate(m.Author.ID)
 	if err != nil {
 		s.Logln("error creating channel:", err)
@@ -37,13 +48,11 @@ func (s *Service) pingHandler(d *discordgo.Session, m *discordgo.MessageCreate) 
 	}
 }
 
-func (s *Service) lsHandler(d *discordgo.Session, m *discordgo.MessageCreate) {
+func (s *Service) lsHandler(d *discordgo.Session, m *discordgo.MessageCreate, payload string) {
 
 }
 
-func (s *Service) qcHandler(d *discordgo.Session, m *discordgo.MessageCreate) {
-	payload := strings.SplitN(m.Content, " ", 2)[1]
-
+func (s *Service) qcHandler(d *discordgo.Session, m *discordgo.MessageCreate, payload string) {
 	if qc, ok := s.quickChats[payload]; ok {
 		qcFile, err := os.OpenFile("qc/"+qc.SoundFile, os.O_RDONLY, 0)
 		if err != nil {
@@ -85,8 +94,7 @@ func (s *Service) qcHandler(d *discordgo.Session, m *discordgo.MessageCreate) {
 
 }
 
-func (s *Service) slapHandler(d *discordgo.Session, m *discordgo.MessageCreate) {
-
+func (s *Service) slapHandler(d *discordgo.Session, m *discordgo.MessageCreate, payload string) {
 	if len(m.Mentions) <= 0 {
 		return
 	}
@@ -131,14 +139,4 @@ func (s *Service) slapHandler(d *discordgo.Session, m *discordgo.MessageCreate) 
 		s.Logln(err)
 		return
 	}
-}
-
-func (s *Service) eledoreHandler(d *discordgo.Session, m *discordgo.MessageCreate) {
-	eledore := `ATTENTION//NOTE: 
-The "Renewed Exemplar SecT" >REST<, has CHOSEN//DECIDED to expend its MEMBERS//UNITS by one.
-The >REST< has Assigned '<@132328159726141442>' to join the Examplars in upholding the 'Core Directives' of this Server\Hub for all <<NEXT>> & <<HUMANS>>.
-Reminder! Failure to uphold/follow the 'Core Directives' is ill advised!
-ACKNOWLEDGE//SUBMIT!!`
-	// _, _ = d.ChannelMessageSendEmbed("938596269880926279", embed.NewEmbed().SetDescription(eledore).SetColor(0x00a5e4).MessageEmbed)
-	_, _ = d.ChannelMessageSendEmbed(m.ChannelID, embed.NewEmbed().SetDescription(eledore).SetColor(0x00a5e4).MessageEmbed)
 }

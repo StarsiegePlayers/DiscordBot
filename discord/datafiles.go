@@ -17,7 +17,7 @@ type slap struct {
 	Generic []string `json:"generic"`
 }
 
-func (s *Service) loadFiles() {
+func (s *Service) loadDataFiles() {
 	s.loadQuickChats()
 	s.loadSlaps()
 }

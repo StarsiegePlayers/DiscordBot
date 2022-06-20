@@ -3,13 +3,13 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"github.com/StarsiegePlayers/DiscordBot/config"
-	"github.com/StarsiegePlayers/DiscordBot/rpc"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/StarsiegePlayers/DiscordBot/config"
 	"github.com/StarsiegePlayers/DiscordBot/module"
+	"github.com/StarsiegePlayers/DiscordBot/rpc"
 )
 
 const (

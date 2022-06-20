@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"io"
 	"math/big"
 	"net/http"
 	"os"
 	"strings"
 	"text/template"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/bwmarrin/discordgo"
 )

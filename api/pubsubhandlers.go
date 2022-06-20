@@ -3,14 +3,14 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/StarsiegePlayers/DiscordBot/config"
+	"github.com/StarsiegePlayers/DiscordBot/module"
 	"github.com/StarsiegePlayers/DiscordBot/rpc"
-	"gopkg.in/yaml.v3"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-
-	"github.com/StarsiegePlayers/DiscordBot/module"
+	"gopkg.in/yaml.v3"
 )
 
 func (s *Service) apiRequestLatestPubSubHandler(pubsub *module.PubSubInfo, msg *message.Message) (err error) {

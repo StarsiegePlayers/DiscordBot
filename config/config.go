@@ -6,7 +6,7 @@ import (
 
 	"github.com/StarsiegePlayers/DiscordBot/module"
 	"github.com/StarsiegePlayers/DiscordBot/rpc"
-	
+
 	"gopkg.in/yaml.v3"
 )
 

@@ -1,6 +1,7 @@
 DiscordBot
 config.yaml
-qc/
+qc/*.mp3
+qc/*.wav
 ### NotepadPP template
 # Notepad++ backups #
 *.bak

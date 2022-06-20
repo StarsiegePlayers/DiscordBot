@@ -1,8 +1,9 @@
 package discord
 
 import (
-	"golang.org/x/exp/slices"
 	"time"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/bwmarrin/discordgo"
 )

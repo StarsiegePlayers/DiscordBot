@@ -12,13 +12,16 @@ type DiscordConfig struct {
 }
 
 type GuildConfig struct {
-	VoiceChannelID string                    `yaml:"VoiceChannelID"`
-	CommandPrefix  string                    `yaml:"CommandPrefix"`
-	TimeoutConfig  DiscordGuildTimeoutConfig `yaml:"TimeoutConfig"`
+	BotLogChannelID          string                    `yaml:"BotLogChannelID"`
+	VoiceChannelID           string                    `yaml:"VoiceChannelID"`
+	CommandPrefix            string                    `yaml:"CommandPrefix"`
+	APIAnnouncementChannelID string                    `yaml:"APIAnnouncementChannelID"`
+	TimeoutConfig            DiscordGuildTimeoutConfig `yaml:"TimeoutConfig"`
+	NamedRoles               map[string]string         `yaml:"NamedRoles"`
 }
 
 func (g GuildConfig) String() string {
-	return fmt.Sprintf("vc: %s | pretix: %s | timeoutconfig: %s", g.VoiceChannelID, g.CommandPrefix, g.TimeoutConfig)
+	return fmt.Sprintf("log: %s | vc: %s | pretix: %s | announcement: %s | timeoutconfig: {%s}", g.BotLogChannelID, g.VoiceChannelID, g.CommandPrefix, g.APIAnnouncementChannelID, g.TimeoutConfig)
 }
 
 type DiscordGuildTimeoutConfig struct {

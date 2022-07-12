@@ -2,6 +2,7 @@ package discord
 
 import (
 	"fmt"
+	"golang.org/x/exp/slices"
 	"strings"
 	"sync"
 	"time"
@@ -18,13 +19,23 @@ const (
 	DefaultCommandPrefix = "!"
 )
 
-type MessageHandler func(*discordgo.Session, *discordgo.MessageCreate, string)
+type MessageHandler func(*Session, *discordgo.MessageCreate, string)
+type Commands map[string]MessageHandler
+
+func (c *Commands) Register(name string, fn MessageHandler) {
+	(*c)[name] = fn
+}
+
+type Session struct {
+	GuildConfig config.GuildConfig
+	*discordgo.Session
+}
 
 type Service struct {
 	module.Base
 
 	wg       sync.WaitGroup
-	commands map[string]MessageHandler
+	commands Commands
 	session  *discordgo.Session
 
 	config *config.DiscordConfig
@@ -39,14 +50,15 @@ func (s *Service) Init() {
 
 	s.loadDataFiles()
 
-	s.commands = make(map[string]MessageHandler)
-	s.commands["init"] = s.messageLogger(s.initHandler)
-	s.commands["commands"] = s.messageLogger(s.commandsHandler)
-	s.commands["help"] = s.messageLogger(s.commandsHandler)
-	s.commands["ping"] = s.messageLogger(s.pingHandler)
-	s.commands["ls"] = s.messageLogger(s.lsHandler)
-	s.commands["qc"] = s.messageLogger(s.qcHandler)
-	s.commands["slap"] = s.messageLogger(s.slapHandler)
+	s.commands = make(Commands)
+	s.commands.Register("init", s.messageLogger(s.initHandler))
+	s.commands.Register("commands", s.messageLogger(s.commandsHandler))
+	s.commands.Register("help", s.messageLogger(s.commandsHandler))
+	s.commands.Register("ping", s.messageLogger(s.pingHandler))
+	s.commands.Register("ls", s.messageLogger(s.lsHandler))
+	s.commands.Register("qc", s.messageLogger(s.qcHandler))
+	s.commands.Register("slap", s.messageLogger(s.slapHandler))
+	s.commands.Register("move", s.messageLogger(s.roleCheck("Staff", s.moveHandler)))
 
 	s.PubSubSubscribe(rpc.DiscordMessageSendTopic, s.discordMessageSendPubSubHandler)
 	s.PubSubSubscribe(rpc.APIRequestResponse, s.APIRequestResponsePubSubHandler)
@@ -95,11 +107,41 @@ func (s *Service) isMentioned(input []*discordgo.User, compare *discordgo.User) 
 }
 
 func (s *Service) messageLogger(fn MessageHandler) MessageHandler {
-	return func(d *discordgo.Session, m *discordgo.MessageCreate, payload string) {
+	return func(d *Session, m *discordgo.MessageCreate, payload string) {
 		guild, _ := d.State.Guild(m.GuildID)
 		channel, _ := d.State.Channel(m.ChannelID)
 
 		s.Logf("(%s) [#%s] <%s>: %s", guild.Name, channel.Name, m.Author.Username+"#"+m.Author.Discriminator, m.Content)
+
+		fn(d, m, payload)
+	}
+}
+
+func (s *Service) roleCheck(namedRole string, fn MessageHandler) MessageHandler {
+	return func(d *Session, m *discordgo.MessageCreate, payload string) {
+		guild, _ := d.State.Guild(m.GuildID)
+		channel, _ := d.State.Channel(m.ChannelID)
+		member, _ := d.State.Member(m.GuildID, m.Author.ID)
+
+		if roleID, ok := d.GuildConfig.NamedRoles[namedRole]; !ok || !slices.Contains(member.Roles, roleID) {
+			s.Logf("(%s) [#%s] %s does not have the %s (%s) role - roles possessed: {%s}", guild.Name, channel.Name, m.Author.Username+"#"+m.Author.Discriminator, namedRole, roleID, strings.Join(member.Roles, ", "))
+			return
+		}
+
+		fn(d, m, payload)
+	}
+}
+
+func (s *Service) permissionCheck(permission int64, fn MessageHandler) MessageHandler {
+	return func(d *Session, m *discordgo.MessageCreate, payload string) {
+		guild, _ := d.State.Guild(m.GuildID)
+		channel, _ := d.State.Channel(m.ChannelID)
+		perms, _ := d.State.UserChannelPermissions(m.Author.ID, m.ChannelID)
+
+		if perms&permission == 0 {
+			s.Logf("(%s) [#%s] %s does not have the %d permission flag {permissions: %d}", guild.Name, channel.Name, m.Author.Username+"#"+m.Author.Discriminator, permission, perms)
+			return
+		}
 
 		fn(d, m, payload)
 	}
@@ -118,22 +160,28 @@ func (s *Service) messageDispatcher(d *discordgo.Session, m *discordgo.MessageCr
 	}
 
 	// did we receive a command?
-	if _, ok := s.config.Guilds[m.GuildID]; (ok && strings.HasPrefix(m.Content, s.config.Guilds[m.GuildID].CommandPrefix)) ||
+	if cfg, ok := s.config.Guilds[m.GuildID]; (ok && strings.HasPrefix(m.Content, s.config.Guilds[m.GuildID].CommandPrefix)) ||
 		(s.isMentioned(m.Mentions, d.State.User)) ||
 		(!ok && strings.HasPrefix(m.Content, DefaultCommandPrefix+"init")) {
 
 		content := m.Content
+		session := &Session{
+			Session:     d,
+			GuildConfig: cfg,
+		}
 
 		if s.isMentioned(m.Mentions, d.State.User) {
 			content = strings.ReplaceAll(content, d.State.User.Mention(), "")
 			content = strings.TrimSpace(content)
 		}
 
-		command := strings.SplitN(content, " ", 2)[0]
-		content = strings.TrimPrefix(content, command)
-
 		content = strings.TrimSpace(content)
+
+		command := strings.SplitN(content, " ", 2)[0]
 		command = strings.ToLower(command)
+
+		content = strings.TrimPrefix(content, command)
+		content = strings.TrimSpace(content)
 
 		if strings.HasPrefix(command, s.config.Guilds[m.GuildID].CommandPrefix) {
 			command = strings.TrimPrefix(command, s.config.Guilds[m.GuildID].CommandPrefix)
@@ -142,7 +190,7 @@ func (s *Service) messageDispatcher(d *discordgo.Session, m *discordgo.MessageCr
 
 		// dispatch message to correct function, if registered
 		if fn, ok := s.commands[command]; ok {
-			go fn(d, m, content)
+			go fn(session, m, content)
 		}
 	}
 }

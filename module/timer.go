@@ -24,3 +24,22 @@ func (b *Base) NewTimer(ctxIn context.Context, timeIn time.Duration, fn TimerCal
 
 	return cancelFn
 }
+
+func (b *Base) NewAlarm(ctxIn context.Context, fromTime time.Time, addDuration time.Duration, fn TimerCallback) context.CancelFunc {
+	ctx, cancelFn := context.WithCancel(ctxIn)
+	next := time.Until(fromTime.Add(addDuration).Add(15 * time.Second))
+	t := time.NewTimer(next)
+
+	go func() {
+		for {
+			select {
+			case <-t.C:
+				fn(ctx, cancelFn)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return cancelFn
+}

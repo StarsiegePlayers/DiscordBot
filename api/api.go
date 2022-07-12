@@ -37,8 +37,6 @@ func (s *Service) Start() error {
 	// wait for config
 	s.wg.Wait()
 
-	s.Base.NewTimer(s.Base, time.Duration(s.config.PollTimeMinutes)*time.Minute, s.timerCallback)
-
 	s.timerCallback(s.Base, func() {})
 	s.PubSubSubscribe(rpc.APIRequestLatest, s.apiRequestLatestPubSubHandler)
 
@@ -64,6 +62,17 @@ func (s *Service) requestServerList() (list rpc.ServerListData, err error) {
 	}
 
 	defer res.Body.Close()
+
+	lastpudated := res.Header.Get("Last-Modified")
+	s.Logf("Last-Modified: %s", lastpudated)
+
+	APILastUpdated, err := time.Parse(time.RFC1123, lastpudated)
+	if err != nil {
+		s.Logln("unable to parse last updated time, setting to now()")
+		APILastUpdated = time.Now()
+	}
+
+	s.Base.NewAlarm(s.Base, APILastUpdated, time.Duration(s.config.PollTimeMinutes)*time.Minute, s.timerCallback)
 
 	body := json.NewDecoder(res.Body)
 

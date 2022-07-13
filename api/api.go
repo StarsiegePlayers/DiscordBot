@@ -30,15 +30,15 @@ func (s *Service) Init() {
 	s.wg.Add(1)
 
 	s.APIHistory = make([]rpc.ServerListData, 0)
-	s.PubSubSubscribe(rpc.NewConfigLoadedTopic, s.configMessagePubSubHandler)
+	s.RPCSubscribe(rpc.NewConfigLoadedTopic, s.configMessageRPCHandler)
 }
 
 func (s *Service) Start() error {
 	// wait for config
 	s.wg.Wait()
 
-	s.timerCallback(s.Base, func() {})
-	s.PubSubSubscribe(rpc.APIRequestLatest, s.apiRequestLatestPubSubHandler)
+	s.alarmCallback(s.Base, func() {})
+	s.RPCSubscribe(rpc.APIRequestLatest, s.apiRequestLatestRPCHandler)
 
 	return nil
 }
@@ -72,7 +72,7 @@ func (s *Service) requestServerList() (list rpc.ServerListData, err error) {
 		APILastUpdated = time.Now()
 	}
 
-	s.Base.NewAlarm(s.Base, APILastUpdated, time.Duration(s.config.PollTimeMinutes)*time.Minute, s.timerCallback)
+	s.Base.NewAlarm(s.Base, APILastUpdated, time.Duration(s.config.PollTimeMinutes)*time.Minute, s.alarmCallback)
 
 	body := json.NewDecoder(res.Body)
 
@@ -90,7 +90,7 @@ func (s *Service) requestServerList() (list rpc.ServerListData, err error) {
 	return
 }
 
-func (s *Service) timerCallback(ctx context.Context, cancelfn context.CancelFunc) {
+func (s *Service) alarmCallback(ctx context.Context, cancelfn context.CancelFunc) {
 	list, err := s.requestServerList()
 	if err != nil {
 		s.Logln(err)

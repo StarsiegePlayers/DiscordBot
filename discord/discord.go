@@ -2,7 +2,6 @@ package discord
 
 import (
 	"fmt"
-	"golang.org/x/exp/slices"
 	"strings"
 	"sync"
 	"time"
@@ -18,18 +17,6 @@ const (
 	ServiceName          = "discord"
 	DefaultCommandPrefix = "!"
 )
-
-type MessageHandler func(*Session, *discordgo.MessageCreate, string)
-type Commands map[string]MessageHandler
-
-func (c *Commands) Register(name string, fn MessageHandler) {
-	(*c)[name] = fn
-}
-
-type Session struct {
-	GuildConfig config.GuildConfig
-	*discordgo.Session
-}
 
 type Service struct {
 	module.Base
@@ -51,18 +38,11 @@ func (s *Service) Init() {
 	s.loadDataFiles()
 
 	s.commands = make(Commands)
-	s.commands.Register("init", s.messageLogger(s.initHandler))
-	s.commands.Register("commands", s.messageLogger(s.commandsHandler))
-	s.commands.Register("help", s.messageLogger(s.commandsHandler))
-	s.commands.Register("ping", s.messageLogger(s.pingHandler))
-	s.commands.Register("ls", s.messageLogger(s.lsHandler))
-	s.commands.Register("qc", s.messageLogger(s.qcHandler))
-	s.commands.Register("slap", s.messageLogger(s.slapHandler))
-	s.commands.Register("move", s.messageLogger(s.roleCheck("Staff", s.moveHandler)))
+	s.registerHandlers()
 
-	s.PubSubSubscribe(rpc.DiscordMessageSendTopic, s.discordMessageSendPubSubHandler)
-	s.PubSubSubscribe(rpc.APIRequestResponse, s.APIRequestResponsePubSubHandler)
-	s.PubSubSubscribe(rpc.NewConfigLoadedTopic, s.configMessagePubSubHandler)
+	s.RPCSubscribe(rpc.DiscordMessageSendTopic, s.discordMessageSendRPCHandler)
+	s.RPCSubscribe(rpc.APIRequestResponse, s.apiRequestResponseRPCHandler)
+	s.RPCSubscribe(rpc.NewConfigLoadedTopic, s.configMessageRPCHandler)
 }
 
 func (s *Service) Start() (err error) {
@@ -74,7 +54,7 @@ func (s *Service) Start() (err error) {
 		return err
 	}
 
-	s.session.AddHandler(s.initMessageSender)
+	s.session.AddHandler(s.initMessage)
 	s.session.AddHandler(s.messageDispatcher)
 
 	s.session.Identify.Intents = discordgo.IntentsAll
@@ -106,69 +86,25 @@ func (s *Service) isMentioned(input []*discordgo.User, compare *discordgo.User) 
 	return false
 }
 
-func (s *Service) messageLogger(fn MessageHandler) MessageHandler {
-	return func(d *Session, m *discordgo.MessageCreate, payload string) {
-		guild, _ := d.State.Guild(m.GuildID)
-		channel, _ := d.State.Channel(m.ChannelID)
-
-		s.Logf("(%s) [#%s] <%s>: %s", guild.Name, channel.Name, m.Author.Username+"#"+m.Author.Discriminator, m.Content)
-
-		fn(d, m, payload)
-	}
-}
-
-func (s *Service) roleCheck(namedRole string, fn MessageHandler) MessageHandler {
-	return func(d *Session, m *discordgo.MessageCreate, payload string) {
-		guild, _ := d.State.Guild(m.GuildID)
-		channel, _ := d.State.Channel(m.ChannelID)
-		member, _ := d.State.Member(m.GuildID, m.Author.ID)
-
-		if roleID, ok := d.GuildConfig.NamedRoles[namedRole]; !ok || !slices.Contains(member.Roles, roleID) {
-			s.Logf("(%s) [#%s] %s does not have the %s (%s) role - roles possessed: {%s}", guild.Name, channel.Name, m.Author.Username+"#"+m.Author.Discriminator, namedRole, roleID, strings.Join(member.Roles, ", "))
-			return
-		}
-
-		fn(d, m, payload)
-	}
-}
-
-func (s *Service) permissionCheck(permission int64, fn MessageHandler) MessageHandler {
-	return func(d *Session, m *discordgo.MessageCreate, payload string) {
-		guild, _ := d.State.Guild(m.GuildID)
-		channel, _ := d.State.Channel(m.ChannelID)
-		perms, _ := d.State.UserChannelPermissions(m.Author.ID, m.ChannelID)
-
-		if perms&permission == 0 {
-			s.Logf("(%s) [#%s] %s does not have the %d permission flag {permissions: %d}", guild.Name, channel.Name, m.Author.Username+"#"+m.Author.Discriminator, permission, perms)
-			return
-		}
-
-		fn(d, m, payload)
-	}
-}
-
 func (s *Service) messageDispatcher(d *discordgo.Session, m *discordgo.MessageCreate) {
 	// Ignore all messages created by the bot itself
 	if m.Author.ID == d.State.User.ID {
 		return
 	}
 
-	// should we enforce moderation?
-	if s.PerformModeration(d, m) {
-		// moderation was performed
-		return
+	cfg, hasConfig := s.config.Guilds[m.GuildID]
+
+	session := &Session{
+		Session:     d,
+		GuildConfig: cfg,
 	}
 
 	// did we receive a command?
-	if cfg, ok := s.config.Guilds[m.GuildID]; (ok && strings.HasPrefix(m.Content, s.config.Guilds[m.GuildID].CommandPrefix)) ||
-		(s.isMentioned(m.Mentions, d.State.User)) ||
-		(!ok && strings.HasPrefix(m.Content, DefaultCommandPrefix+"init")) {
+	if (hasConfig && strings.HasPrefix(m.Content, s.config.Guilds[m.GuildID].CommandPrefix)) ||
+		(!hasConfig && strings.HasPrefix(m.Content, DefaultCommandPrefix+"init")) ||
+		(s.isMentioned(m.Mentions, d.State.User)) {
 
 		content := m.Content
-		session := &Session{
-			Session:     d,
-			GuildConfig: cfg,
-		}
 
 		if s.isMentioned(m.Mentions, d.State.User) {
 			content = strings.ReplaceAll(content, d.State.User.Mention(), "")
@@ -189,13 +125,29 @@ func (s *Service) messageDispatcher(d *discordgo.Session, m *discordgo.MessageCr
 		}
 
 		// dispatch message to correct function, if registered
-		if fn, ok := s.commands[command]; ok {
-			go fn(session, m, content)
+		if cmd, ok := s.commands[command]; ok {
+			guild, _ := d.State.Guild(m.GuildID)
+			channel, _ := d.State.Channel(m.ChannelID)
+			member, _ := d.State.Member(m.GuildID, m.Author.ID)
+			perms, _ := d.State.UserChannelPermissions(m.Author.ID, m.ChannelID)
+
+			msg := &MessageCreate{
+				Guild:         guild,
+				Channel:       channel,
+				Member:        member,
+				Command:       cmd,
+				Permissions:   perms,
+				MessageCreate: m,
+			}
+
+			s.Logf("(%s) [#%s] <%s>: %s", guild.Name, channel.Name, m.Author.Username+"#"+m.Author.Discriminator, m.Content)
+
+			go cmd.Handler(session, msg, content)
 		}
 	}
 }
 
-func (s *Service) initMessageSender(*discordgo.Session, *discordgo.Ready) {
+func (s *Service) initMessage(*discordgo.Session, *discordgo.Ready) {
 	// wait for config
 	s.wg.Wait()
 
@@ -203,18 +155,31 @@ func (s *Service) initMessageSender(*discordgo.Session, *discordgo.Ready) {
 		s.Logf("sending init message to %s(%s)", name, id)
 		dm, err := s.session.UserChannelCreate(id)
 		if err != nil {
+			s.Logln("error creating init user channel:", err)
 			return
 		}
 
 		_, err = s.session.ChannelMessageSend(dm.ID, fmt.Sprintf("[%s] - bot is online", time.Now().Format(time.ANSIC)))
 		if err != nil {
+			s.Logln("error sending init message:", err)
 			return
 		}
 	}
 
 	for _, v := range s.session.State.Guilds {
 		s.Logf("Guild Registered: %s(%s)", v.Name, v.ID)
-	}
+		channels, err := s.session.GuildChannels(v.ID)
+		if err != nil {
+			s.Logln("error fetching channels", err)
+		}
 
-	return
+		out := make([]string, 0, len(channels))
+		for _, c := range channels {
+			if c.Type == discordgo.ChannelTypeGuildText {
+				out = append(out, fmt.Sprintf("%s(%s)", c.Name, c.ID))
+			}
+		}
+
+		s.Logf("Channels for %s: %s", v.Name, strings.Join(out, ", "))
+	}
 }

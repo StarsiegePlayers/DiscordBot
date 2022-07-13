@@ -30,8 +30,8 @@ type Service struct {
 
 func (s *Service) Init() {
 	// queue waiting on config
-	s.wg.Add(1)
-	s.PubSubSubscribe(rpc.NewConfigLoadedTopic, s.configMessagePubSubHandler)
+	s.wg.Add(1) // rpc_handlers.go
+	s.RPCSubscribe(rpc.NewConfigLoadedTopic, s.configMessageRPCHandler)
 }
 
 func (s *Service) Start() (err error) {
@@ -46,8 +46,8 @@ func (s *Service) Start() (err error) {
 		s.Logf("Unable to retrieve Calendar client: %v", err)
 	}
 
-	s.updateEvents()
-	s.listEvents()
+	s.timerCallback(s.Base, func() {})
+	s.NewTimer(s.Base, time.Hour, s.timerCallback)
 
 	return nil
 }
@@ -80,4 +80,9 @@ func (s *Service) listEvents() {
 
 func (s *Service) Stop() error {
 	return nil
+}
+
+func (s *Service) timerCallback(ctx context.Context, cancelfn context.CancelFunc) {
+	s.updateEvents()
+	s.listEvents()
 }

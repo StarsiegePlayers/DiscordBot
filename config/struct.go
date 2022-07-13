@@ -3,35 +3,27 @@ package config
 import (
 	"fmt"
 	"strings"
+
+	"golang.org/x/exp/maps"
 )
 
 type DiscordConfig struct {
-	DebugUsers map[string]string      `yaml:"DebugUsers"`
-	Guilds     map[string]GuildConfig `yaml:"Guilds"`
-	AuthToken  string                 `yaml:"AuthToken"`
+	DebugUsers    map[string]string      `yaml:"DebugUsers"`
+	Guilds        map[string]GuildConfig `yaml:"Guilds"`
+	AuthToken     string                 `yaml:"AuthToken"`
+	ApplicationID string                 `yaml:"ApplicationID"`
 }
 
 type GuildConfig struct {
-	BotLogChannelID          string                    `yaml:"BotLogChannelID"`
-	VoiceChannelID           string                    `yaml:"VoiceChannelID"`
-	CommandPrefix            string                    `yaml:"CommandPrefix"`
-	APIAnnouncementChannelID string                    `yaml:"APIAnnouncementChannelID"`
-	TimeoutConfig            DiscordGuildTimeoutConfig `yaml:"TimeoutConfig"`
-	NamedRoles               map[string]string         `yaml:"NamedRoles"`
+	BotLogChannelID          string            `yaml:"BotLogChannelID"`
+	VoiceChannelID           string            `yaml:"VoiceChannelID"`
+	CommandPrefix            string            `yaml:"CommandPrefix"`
+	APIAnnouncementChannelID string            `yaml:"APIAnnouncementChannelID"`
+	NamedRoles               map[string]string `yaml:"NamedRoles"`
 }
 
 func (g GuildConfig) String() string {
-	return fmt.Sprintf("log: %s | vc: %s | pretix: %s | announcement: %s | timeoutconfig: {%s}", g.BotLogChannelID, g.VoiceChannelID, g.CommandPrefix, g.APIAnnouncementChannelID, g.TimeoutConfig)
-}
-
-type DiscordGuildTimeoutConfig struct {
-	TimeoutRoleID  string   `yaml:"TimeoutRoleID"`
-	TimeoutTTL     int      `yaml:"TimeoutTTL"`
-	ExemptChannels []string `yaml:"ExemptChannels"`
-}
-
-func (d DiscordGuildTimeoutConfig) String() string {
-	return fmt.Sprintf("role: %s | ttl: %d | exempt: %s", d.TimeoutRoleID, d.TimeoutTTL, strings.Join(d.ExemptChannels, ", "))
+	return fmt.Sprintf("log: %s | vc: %s | pretix: %s | announcement: %s | namedroles: {%s}", g.BotLogChannelID, g.VoiceChannelID, g.CommandPrefix, g.APIAnnouncementChannelID, strings.Join(maps.Keys(g.NamedRoles), ", "))
 }
 
 type CalendarConfig struct {

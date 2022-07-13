@@ -9,34 +9,34 @@ import (
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 )
 
-type PubSubChannel <-chan *message.Message
-type PubSubHandler func(*PubSubInfo, *message.Message) error
+type RPCChannel <-chan *message.Message
+type RPCHandler func(*RPCInfo, *message.Message) error
 
-type PubSubInfo struct {
+type RPCInfo struct {
 	Topic string
 	*gochannel.GoChannel
-	PubSubChannel
-	PubSubHandler
+	RPCChannel
+	RPCHandler
 	Cancel func()
 }
 
-func (b *Base) PubSubSubscribe(topic string, handlerFn PubSubHandler) {
+func (b *Base) RPCSubscribe(topic string, handlerFn RPCHandler) {
 	ctx, cancelFn := context.WithCancel(b)
 
-	c, err := b.pubsub.Subscribe(ctx, topic)
+	c, err := b.rpc.Subscribe(ctx, topic)
 	if err != nil {
 		b.Logln(fmt.Errorf("error subscribing to: %s", topic))
 	}
 
-	ps := &PubSubInfo{
-		Topic:         topic,
-		GoChannel:     b.pubsub,
-		PubSubChannel: c,
-		PubSubHandler: handlerFn,
-		Cancel:        cancelFn,
+	ps := &RPCInfo{
+		Topic:      topic,
+		GoChannel:  b.rpc,
+		RPCChannel: c,
+		RPCHandler: handlerFn,
+		Cancel:     cancelFn,
 	}
 
-	b.PubSubChannels[topic] = ps
+	b.RPCChannels[topic] = ps
 
 	go func() {
 		for {
@@ -55,5 +55,5 @@ func (b *Base) PubSubSubscribe(topic string, handlerFn PubSubHandler) {
 }
 
 func (b *Base) PubSubPublish(topic string, payload []byte) error {
-	return b.pubsub.Publish(topic, message.NewMessage(watermill.NewUUID(), payload))
+	return b.rpc.Publish(topic, message.NewMessage(watermill.NewUUID(), payload))
 }

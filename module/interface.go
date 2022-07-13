@@ -22,22 +22,22 @@ type Interface interface {
 }
 
 type Base struct {
-	Name           string
-	pubsub         *gochannel.GoChannel
-	PubSubChannels map[string]*PubSubInfo
+	Name        string
+	rpc         *gochannel.GoChannel
+	RPCChannels map[string]*RPCInfo
 
 	context.Context
 	log.Log
 	Interface
 }
 
-func (b *Base) BaseInit(ctx context.Context, pubsub *gochannel.GoChannel, name string) {
+func (b *Base) BaseInit(ctx context.Context, rpc *gochannel.GoChannel, name string) {
 	b.Context = ctx
 	b.Name = name
 	b.Log = log.NewLogger(b.Name)
 
-	b.pubsub = pubsub
-	b.PubSubChannels = make(map[string]*PubSubInfo)
+	b.rpc = rpc
+	b.RPCChannels = make(map[string]*RPCInfo)
 }
 
 func (b *Base) Init() {}

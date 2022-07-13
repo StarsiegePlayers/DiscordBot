@@ -9,6 +9,10 @@ type Log struct {
 	name string
 }
 
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
 func NewLogger(name string) Log {
 	return Log{name: name}
 }

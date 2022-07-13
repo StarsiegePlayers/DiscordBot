@@ -8,14 +8,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func (s *Service) discordMessageSendPubSubHandler(pubsub *module.PubSubInfo, msg *message.Message) (err error) {
+func (s *Service) discordMessageSendRPCHandler(pubsub *module.RPCInfo, msg *message.Message) (err error) {
 	defer msg.Ack()
 	s.Logf("received %s", string(msg.Payload))
 
 	return
 }
 
-func (s *Service) configMessagePubSubHandler(pubsub *module.PubSubInfo, msg *message.Message) (err error) {
+func (s *Service) configMessageRPCHandler(pubsub *module.RPCInfo, msg *message.Message) (err error) {
 	defer msg.Ack()
 	if s.config == nil {
 		defer s.wg.Done()
@@ -35,7 +35,7 @@ func (s *Service) configMessagePubSubHandler(pubsub *module.PubSubInfo, msg *mes
 	return
 }
 
-func (s *Service) APIRequestResponsePubSubHandler(pubsub *module.PubSubInfo, msg *message.Message) (err error) {
+func (s *Service) apiRequestResponseRPCHandler(pubsub *module.RPCInfo, msg *message.Message) (err error) {
 	defer msg.Ack()
 
 	s.Logln("received new api response")

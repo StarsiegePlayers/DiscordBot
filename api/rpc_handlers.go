@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func (s *Service) apiRequestLatestPubSubHandler(pubsub *module.PubSubInfo, msg *message.Message) (err error) {
+func (s *Service) apiRequestLatestRPCHandler(pubsub *module.RPCInfo, msg *message.Message) (err error) {
 	defer msg.Ack()
 
 	if len(s.APIHistory) <= 0 {
@@ -32,7 +32,7 @@ func (s *Service) apiRequestLatestPubSubHandler(pubsub *module.PubSubInfo, msg *
 	return
 }
 
-func (s *Service) configMessagePubSubHandler(pubsub *module.PubSubInfo, msg *message.Message) (err error) {
+func (s *Service) configMessageRPCHandler(pubsub *module.RPCInfo, msg *message.Message) (err error) {
 	defer msg.Ack()
 	if s.config == nil {
 		defer s.wg.Done()

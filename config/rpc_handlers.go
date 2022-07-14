@@ -31,5 +31,7 @@ func (s *Service) discordConfigUpdate(rpcInfo *module.RPCInfo, msg *message.Mess
 		s.Logln("unable to write config", err)
 	}
 
+	s.Logln("config updated successfully")
+
 	return
 }

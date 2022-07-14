@@ -2,6 +2,7 @@ package discord
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"golang.org/x/exp/slices"
@@ -33,22 +34,40 @@ func (s *Service) registerHandlers() {
 
 func (s *Service) commandsHandler(d *Session, m *MessageCreate, payload string) {
 	options := strings.Split(payload, " ")
+
 	if len(options) == 1 && options[0] == "" {
 		var commands []string
 		for k, v := range s.commands {
-			if v.Permission != 0 && m.Member.Permissions&v.Permission != 0 {
+			if v.Permission == 0 && len(v.Roles) == 0 {
 				commands = append(commands, k)
 				continue
 			}
 
+			if ok, err := s.memberHasPermission(d, m.GuildID, m.Author.ID, v.Permission); ok && err != nil {
+				commands = append(commands, k)
+				continue
+			} else if err != nil {
+				s.Logln("error checking permissions:", err)
+				continue
+			}
+
 			if len(v.Roles) > 0 && len(m.Member.Roles) > 0 {
-				for _, role := range v.Roles {
-					if slices.Contains(m.Member.Roles, role) {
-						commands = append(commands, k)
-						break
+				for _, roleName := range v.Roles {
+					if roleID, ok := d.GuildConfig.NamedRoles[roleName]; ok {
+						if slices.Contains(m.Member.Roles, roleID) {
+							commands = append(commands, k)
+							break
+						}
+					} else {
+						s.Logf("(%s)[%s] error: role %s not defined", m.Guild.Name, m.GuildID, roleName)
 					}
 				}
 			}
+		}
+
+		sort.Strings(commands)
+		for i, v := range commands {
+			commands[i] = fmt.Sprintf("`%s`", v)
 		}
 
 		_, err := d.ChannelMessageMentionSend(m.ChannelID, m.Author, fmt.Sprintf("Available commands: %s", strings.Join(commands, ", ")))

@@ -38,6 +38,9 @@ func (s *Service) Init() {
 	if err != nil {
 		s.Logln(err)
 	}
+
+	s.RPCSubscribe(rpc.ConfigUpdatedFromDiscord, s.discordConfigUpdate)
+
 }
 
 func (s *Service) Start() error {

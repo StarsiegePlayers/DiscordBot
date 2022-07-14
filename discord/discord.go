@@ -93,6 +93,27 @@ func (s *Service) sendUsageMessage(d *Session, m *MessageCreate) {
 	}
 }
 
+func (s *Service) memberHasPermission(d *Session, guildID string, userID string, permission int64) (bool, error) {
+	member, err := d.State.Member(guildID, userID)
+	if err != nil {
+		if member, err = d.GuildMember(guildID, userID); err != nil {
+			return false, err
+		}
+	}
+
+	for _, roleID := range member.Roles {
+		role, err := d.State.Role(guildID, roleID)
+		if err != nil {
+			return false, err
+		}
+		if role.Permissions&permission != 0 {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (s *Service) formatUsageMessage(commandPrefix string, usage string) string {
 	return fmt.Sprintf("Usage: `%s%s`", commandPrefix, usage)
 }

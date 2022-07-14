@@ -93,6 +93,7 @@ func (s *Service) muzzleHandler(d *Session, m *MessageCreate, payload string) {
 		if err != nil {
 			s.Logln("(%s) error while sending error message: %s", m.Guild.Name, err)
 		}
+		return
 	}
 
 	if len(payload) == 0 {
@@ -106,30 +107,54 @@ func (s *Service) muzzleHandler(d *Session, m *MessageCreate, payload string) {
 		return
 	}
 
-	user := args[0]
+	userID := args[0]
+	userID = userID[2 : len(userID)-1]
+
+	member, err := s.session.GuildMember(m.GuildID, userID)
+	if err != nil {
+		s.Logf("(%s) error fetching member: %s", m.Guild.Name, err)
+
+		_, err := d.ChannelMessageMentionSend(m.ChannelID, m.Author, fmt.Sprintf("Error: %s is not a valid user ID.", userID))
+		if err != nil {
+			s.Logf("(%s) error while sending error message: %s", m.Guild.Name, err)
+		}
+
+		return
+	}
+
+	nick := member.Nick
+	if nick == "" {
+		nick = member.User.Username
+	}
+
 	duration, err := time.ParseDuration(args[1])
 	if err != nil {
 		s.sendUsageMessage(d, m)
 		return
 	}
 
-	if _, ok := d.GuildConfig.MuzzledUsers[user]; ok {
-		_, err := d.ChannelMessageMentionSend(m.ChannelID, m.Author, fmt.Sprintf("Error: %s is already muzzled.", user))
+	if _, ok := d.GuildConfig.MuzzledUsers[member.User.ID]; ok {
+		_, err := d.ChannelMessageMentionSend(m.ChannelID, m.Author, fmt.Sprintf("Error: %s is already muzzled.", nick))
 		if err != nil {
 			s.Logf("(%s) error while sending error message: %s", m.Guild.Name, err)
 		}
 		return
 	}
 
-	d.GuildConfig.MuzzledUsers[user] = time.Now().Add(duration).Unix()
+	d.GuildConfig.MuzzledUsers[member.User.ID] = time.Now().Add(duration).Unix()
 
-	err = s.session.GuildMemberRoleAdd(m.GuildID, user, d.GuildConfig.NamedRoles["Muzzle"])
+	err = s.session.GuildMemberRoleAdd(m.GuildID, member.User.ID, d.GuildConfig.NamedRoles["Muzzle"])
 	if err != nil {
-		s.Logln("error adding role:", err)
+		s.Logf("(%s) error adding role: %s", m.Guild.Name, err)
 		return
 	}
 
 	s.configUpdateRPCSender()
+
+	_, err = d.ChannelMessageSend(m.ChannelID, fmt.Sprintf("%s has been timed out until %s", nick, time.Unix(d.GuildConfig.MuzzledUsers[member.User.ID], 0).Format(time.RFC822)))
+	if err != nil {
+		s.Logf("(%s) error while sending confirmation message: %s", m.Guild.Name, err)
+	}
 }
 
 func (s *Service) muzzleMaintenance(guildID string, cfg config.GuildConfig) {

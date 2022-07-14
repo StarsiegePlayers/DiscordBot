@@ -20,7 +20,7 @@ type GuildConfig struct {
 	CommandPrefix            string            `yaml:"CommandPrefix"`
 	APIAnnouncementChannelID string            `yaml:"APIAnnouncementChannelID"`
 	NamedRoles               map[string]string `yaml:"NamedRoles"`
-	MuzzledUsers             map[string]int64  `yaml:"NamedRoles"`
+	MuzzledUsers             map[string]int64  `yaml:"MuzzledUsers"`
 }
 
 func (g GuildConfig) String() string {

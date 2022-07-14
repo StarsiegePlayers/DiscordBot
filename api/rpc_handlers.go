@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func (s *Service) apiRequestLatestRPCHandler(pubsub *module.RPCInfo, msg *message.Message) (err error) {
+func (s *Service) apiRequestLatestRPCHandler(rpcInfo *module.RPCInfo, msg *message.Message) (err error) {
 	defer msg.Ack()
 
 	if len(s.APIHistory) <= 0 {
@@ -25,14 +25,14 @@ func (s *Service) apiRequestLatestRPCHandler(pubsub *module.RPCInfo, msg *messag
 		return fmt.Errorf("error marshalling APIHistory response %#v", err)
 	}
 
-	err = pubsub.Publish(rpc.APIRequestResponse, message.NewMessage(watermill.NewUUID(), e))
+	err = rpcInfo.Publish(rpc.APIRequestResponse, message.NewMessage(watermill.NewUUID(), e))
 	if err != nil {
 		return fmt.Errorf("error sending APIMessage %#v", err)
 	}
 	return
 }
 
-func (s *Service) configMessageRPCHandler(pubsub *module.RPCInfo, msg *message.Message) (err error) {
+func (s *Service) configMessageRPCHandler(rpcInfo *module.RPCInfo, msg *message.Message) (err error) {
 	defer msg.Ack()
 	if s.config == nil {
 		defer s.wg.Done()

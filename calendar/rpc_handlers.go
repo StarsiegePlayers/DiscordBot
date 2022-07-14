@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func (s *Service) configMessageRPCHandler(pubsub *module.RPCInfo, msg *message.Message) (err error) {
+func (s *Service) configMessageRPCHandler(rpcInfo *module.RPCInfo, msg *message.Message) (err error) {
 	defer msg.Ack()
 	if s.config == nil {
 		defer s.wg.Done()

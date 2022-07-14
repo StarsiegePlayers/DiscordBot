@@ -20,10 +20,11 @@ type GuildConfig struct {
 	CommandPrefix            string            `yaml:"CommandPrefix"`
 	APIAnnouncementChannelID string            `yaml:"APIAnnouncementChannelID"`
 	NamedRoles               map[string]string `yaml:"NamedRoles"`
+	MuzzledUsers             map[string]int64  `yaml:"NamedRoles"`
 }
 
 func (g GuildConfig) String() string {
-	return fmt.Sprintf("log: %s | vc: %s | pretix: %s | announcement: %s | namedroles: {%s}", g.BotLogChannelID, g.VoiceChannelID, g.CommandPrefix, g.APIAnnouncementChannelID, strings.Join(maps.Keys(g.NamedRoles), ", "))
+	return fmt.Sprintf("log: %s | vc: %s | pretix: %s | announcement: %s | namedroles: {%s} | MuzzledUsers: {%s}", g.BotLogChannelID, g.VoiceChannelID, g.CommandPrefix, g.APIAnnouncementChannelID, strings.Join(maps.Keys(g.NamedRoles), ", "), strings.Join(maps.Keys(g.MuzzledUsers), ", "))
 }
 
 type CalendarConfig struct {

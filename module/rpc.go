@@ -54,6 +54,6 @@ func (b *Base) RPCSubscribe(topic string, handlerFn RPCHandler) {
 	}()
 }
 
-func (b *Base) PubSubPublish(topic string, payload []byte) error {
+func (b *Base) RPCPublish(topic string, payload []byte) error {
 	return b.rpc.Publish(topic, message.NewMessage(watermill.NewUUID(), payload))
 }

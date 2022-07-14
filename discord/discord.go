@@ -86,6 +86,17 @@ func (s *Service) isMentioned(input []*discordgo.User, compare *discordgo.User) 
 	return false
 }
 
+func (s *Service) sendUsageMessage(d *Session, m *MessageCreate) {
+	_, err := d.ChannelMessageMentionSend(m.ChannelID, m.Author, s.formatUsageMessage(d.GuildConfig.CommandPrefix, m.Command.Usage))
+	if err != nil {
+		s.Logf("(%s) error while sending usage message: %s", m.Guild.Name, err)
+	}
+}
+
+func (s *Service) formatUsageMessage(commandPrefix string, usage string) string {
+	return fmt.Sprintf("Usage: `%s%s`", commandPrefix, usage)
+}
+
 func (s *Service) messageDispatcher(d *discordgo.Session, m *discordgo.MessageCreate) {
 	// Ignore all messages created by the bot itself
 	if m.Author.ID == d.State.User.ID {
@@ -167,6 +178,11 @@ func (s *Service) initMessage(*discordgo.Session, *discordgo.Ready) {
 	}
 
 	for _, v := range s.session.State.Guilds {
+		if cfg, ok := s.config.Guilds[v.ID]; ok {
+			// we have a guild config, perform muzzle maintenance
+			s.muzzleMaintenance(v.ID, cfg)
+		}
+
 		s.Logf("Guild Registered: %s(%s)", v.Name, v.ID)
 		channels, err := s.session.GuildChannels(v.ID)
 		if err != nil {
@@ -182,4 +198,5 @@ func (s *Service) initMessage(*discordgo.Session, *discordgo.Ready) {
 
 		s.Logf("Channels for %s: %s", v.Name, strings.Join(out, ", "))
 	}
+
 }

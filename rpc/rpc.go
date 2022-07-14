@@ -6,10 +6,11 @@ import (
 )
 
 const (
-	APIRequestLatest        = "api.request.latest"
-	APIRequestResponse      = "api.request.response"
-	NewConfigLoadedTopic    = "config.NewConfigLoaded"
-	DiscordMessageSendTopic = "discord.message.send"
+	APIRequestLatest         = "api.request.latest"
+	APIRequestResponse       = "api.request.response"
+	NewConfigLoadedTopic     = "config.NewConfigLoaded"
+	ConfigUpdatedFromDiscord = "config.Update.Discord"
+	DiscordMessageSendTopic  = "discord.message.send"
 )
 
 type ServerListMaster struct {

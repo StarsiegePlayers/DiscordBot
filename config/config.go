@@ -47,7 +47,7 @@ func (s *Service) Start() error {
 		return err
 	}
 
-	err = s.PubSubPublish(rpc.NewConfigLoadedTopic, c)
+	err = s.RPCPublish(rpc.NewConfigLoadedTopic, c)
 	if err != nil {
 		s.Logln(err)
 		return err

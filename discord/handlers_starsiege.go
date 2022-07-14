@@ -17,14 +17,20 @@ func (s *Service) registerStarsiegeHandlers() {
 	s.commands.Register(Command{
 		Name:    "ls",
 		Handler: s.lsHandler,
+		Summary: "Lists running games in the current channel.",
+		Usage:   "ls",
 	})
 	s.commands.Register(Command{
 		Name:    "qc",
 		Handler: s.qcHandler,
+		Summary: "Sends a quick chat to the current channel.",
+		Usage:   "qc [quick chat id]",
 	})
 	s.commands.Register(Command{
 		Name:    "slap",
 		Handler: s.slapHandler,
+		Summary: "Slaps a user with a random Starsiege death message.",
+		Usage:   "slap <@user>",
 	})
 }
 
@@ -36,7 +42,7 @@ func (s *Service) qcHandler(d *Session, m *MessageCreate, payload string) {
 	if qc, ok := s.quickChats[payload]; ok {
 		qcFile, err := os.OpenFile("qc/"+qc.SoundFile, os.O_RDONLY, 0)
 		if err != nil {
-			s.Logln(err)
+			s.Logf("(%s) error opening qc file %s: %s", m.Guild.Name, qc.SoundFile, err)
 			return
 		}
 
@@ -44,13 +50,13 @@ func (s *Service) qcHandler(d *Session, m *MessageCreate, payload string) {
 
 		qcFileData, err := io.ReadAll(qcFile)
 		if err != nil {
-			s.Logln(err)
+			s.Logf("(%s) error reading qc file %s: %s", m.Guild.Name, qc.SoundFile, err)
 			return
 		}
 
 		_, err = qcFile.Seek(0, 0)
 		if err != nil {
-			s.Logln(err)
+			s.Logf("(%s) error seeking qc file %s: %s", m.Guild.Name, qc.SoundFile, err)
 			return
 		}
 
@@ -67,7 +73,7 @@ func (s *Service) qcHandler(d *Session, m *MessageCreate, payload string) {
 
 		_, err = d.ChannelMessageSendComplex(m.ChannelID, &msg)
 		if err != nil {
-			s.Logln(err)
+			s.Logf("(%s) error sending qc message: %s", m.Guild.Name, err)
 			return
 		}
 	}
@@ -85,7 +91,7 @@ func (s *Service) slapHandler(d *Session, m *MessageCreate, payload string) {
 
 	nBig, err := rand.Int(rand.Reader, big.NewInt(1024))
 	if err != nil {
-		s.Logln("error generating random number:", err)
+		s.Logf("(%s) error generating random number:", m.Guild.Name, err)
 		return
 	}
 
@@ -108,7 +114,7 @@ func (s *Service) slapHandler(d *Session, m *MessageCreate, payload string) {
 
 	t, err := template.New(fmt.Sprintf("qc_%d_%d", int(section.Int64()), int(item.Int64()))).Parse(output)
 	if err != nil {
-		s.Logln("error parsing template:", err)
+		s.Logf("(%s) error parsing template:", m.Guild.Name, err)
 		return
 	}
 
@@ -119,13 +125,13 @@ func (s *Service) slapHandler(d *Session, m *MessageCreate, payload string) {
 		Target: m.Mentions[0].Mention(),
 	})
 	if err != nil {
-		s.Logln("error executing template:", err)
+		s.Logln("(%s) error executing template:", m.Guild.Name, err)
 		return
 	}
 
 	_, err = s.session.ChannelMessageSend(m.ChannelID, outBuff.String())
 	if err != nil {
-		s.Logln("error sending message:", err)
+		s.Logln("(%s) error sending message:", m.Guild.Name, err)
 		return
 	}
 }

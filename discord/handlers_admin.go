@@ -1,10 +1,7 @@
 package discord
 
 import (
-	"bytes"
-	"encoding/base64"
 	"fmt"
-	"image/png"
 	"net/http"
 	"strings"
 	"time"
@@ -57,31 +54,27 @@ func (s *Service) initHandler(d *Session, m *MessageCreate, payload string) {
 }
 
 func (s *Service) resetWebhooksHandler(d *Session, m *MessageCreate, payload string) {
-	channels, err := d.GuildChannels(m.GuildID)
+	webhooks, err := d.GuildWebhooks(m.GuildID)
 	if err != nil {
-		s.Logf("(%s) error fetching channels: %s", m.Guild.Name, err)
-		return
+		s.Logln("(%s) error fetching webhooks: %s", m.Guild.Name, err)
+
+		_, err = s.ChannelMessageMentionSend(m.ChannelID, m.Author, "Error: Webhooks for this bot have not been deleted.")
+		if err != nil {
+			s.Logf("(%s) error while sending confirmation message: %s", m.Guild.Name, err)
+		}
 	}
 
-	for _, channel := range channels {
-		webhooks, err := d.ChannelWebhooks(channel.ID)
-		if err != nil {
-			s.Logf("(%s) error fetching webhooks for %s: %s", m.Guild.Name, channel.Name, err)
-			continue
-		}
-
-		for _, w := range webhooks {
-			if w.ApplicationID == s.config.ApplicationID {
-				err = d.WebhookDelete(w.ID)
-				if err != nil {
-					s.Logln("(%s) error deleting webhook:", m.Guild.Name, err)
-					continue
-				}
+	for _, hook := range webhooks {
+		if hook.ApplicationID == s.config.ApplicationID {
+			err = d.WebhookDelete(hook.ID)
+			if err != nil {
+				s.Logln("(%s) error deleting webhook:", m.Guild.Name, err)
+				continue
 			}
 		}
 	}
 
-	_, err = d.ChannelMessageMentionSend(m.ChannelID, m.Author, "Webhooks belonging to this bot have been deleted.")
+	_, err = s.ChannelMessageMentionSend(m.ChannelID, m.Author, "Webhooks belonging to this bot have been deleted.")
 	if err != nil {
 		s.Logf("(%s) error while sending confirmation message: %s", m.Guild.Name, err)
 	}
@@ -89,7 +82,7 @@ func (s *Service) resetWebhooksHandler(d *Session, m *MessageCreate, payload str
 
 func (s *Service) muzzleHandler(d *Session, m *MessageCreate, payload string) {
 	if _, ok := d.GuildConfig.NamedRoles["Muzzle"]; !ok {
-		_, err := d.ChannelMessageMentionSend(m.ChannelID, m.Author, "Error: No timeout role has been set.")
+		_, err := s.ChannelMessageMentionSend(m.ChannelID, m.Author, "Error: No timeout role has been set.")
 		if err != nil {
 			s.Logln("(%s) error while sending error message: %s", m.Guild.Name, err)
 		}
@@ -114,7 +107,7 @@ func (s *Service) muzzleHandler(d *Session, m *MessageCreate, payload string) {
 	if err != nil {
 		s.Logf("(%s) error fetching member: %s", m.Guild.Name, err)
 
-		_, err := d.ChannelMessageMentionSend(m.ChannelID, m.Author, fmt.Sprintf("Error: %s is not a valid user ID.", userID))
+		_, err := s.ChannelMessageMentionSend(m.ChannelID, m.Author, fmt.Sprintf("Error: %s is not a valid user ID.", userID))
 		if err != nil {
 			s.Logf("(%s) error while sending error message: %s", m.Guild.Name, err)
 		}
@@ -134,7 +127,7 @@ func (s *Service) muzzleHandler(d *Session, m *MessageCreate, payload string) {
 	}
 
 	if _, ok := d.GuildConfig.MuzzledUsers[member.User.ID]; ok {
-		_, err := d.ChannelMessageMentionSend(m.ChannelID, m.Author, fmt.Sprintf("Error: %s is already muzzled.", nick))
+		_, err := s.ChannelMessageMentionSend(m.ChannelID, m.Author, fmt.Sprintf("Error: %s is already muzzled.", nick))
 		if err != nil {
 			s.Logf("(%s) error while sending error message: %s", m.Guild.Name, err)
 		}
@@ -149,9 +142,9 @@ func (s *Service) muzzleHandler(d *Session, m *MessageCreate, payload string) {
 		return
 	}
 
-	s.configUpdateRPCSender()
+	s.sendRPCConfigUpdate()
 
-	_, err = d.ChannelMessageSend(m.ChannelID, fmt.Sprintf("%s has been timed out until %s", nick, time.Unix(d.GuildConfig.MuzzledUsers[member.User.ID], 0).Format(time.RFC822)))
+	_, err = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("%s has been timed out until %s", nick, time.Unix(d.GuildConfig.MuzzledUsers[member.User.ID], 0).Format(time.RFC822)))
 	if err != nil {
 		s.Logf("(%s) error while sending confirmation message: %s", m.Guild.Name, err)
 	}
@@ -191,7 +184,7 @@ func (s *Service) muzzleMaintenance(guildID string, cfg config.GuildConfig) {
 	}
 
 	if sendUpdate {
-		s.configUpdateRPCSender()
+		s.sendRPCConfigUpdate()
 	}
 }
 
@@ -221,41 +214,10 @@ func (s *Service) moveHandler(d *Session, m *MessageCreate, payload string) {
 		return
 	}
 
-	var hook *discordgo.Webhook
-
-	webhooks, err := d.ChannelWebhooks(channel)
+	hook, err := d.CreateOrFetchChannelWebhook(m.GuildID, channel)
 	if err != nil {
-		s.Logf("(%s) error fetching webhooks:", m.Guild.Name, err)
-	}
-
-	for _, w := range webhooks {
-		if w.ApplicationID == s.config.ApplicationID {
-			hook = w
-		}
-	}
-
-	if hook == nil {
-		avatarImg, err := d.UserAvatarDecode(d.State.User)
-		if err != nil {
-			s.Logf("(%s) unable to decode avatar for %s", m.Guild.Name, prevMessage.Author.ID)
-			return
-		}
-
-		avatarPng := new(bytes.Buffer)
-
-		err = png.Encode(avatarPng, avatarImg)
-		if err != nil {
-			s.Logf("(%s) unable to encode avatar for %s: %s", m.Guild.Name, prevMessage.Author.ID, err)
-			return
-		}
-
-		avatarBase64 := fmt.Sprintf("%s%s", "data:image/png;base64,", base64.StdEncoding.EncodeToString(avatarPng.Bytes()))
-
-		hook, err = d.WebhookCreate(channel, d.State.User.Username, avatarBase64)
-		if err != nil {
-			s.Logf("(%s) unable to create webhook in %s: %s", m.Guild.Name, channel, err)
-			return
-		}
+		s.Logf("(%s) unable to fetch or create webhook: %s", m.Guild.Name, err)
+		return
 	}
 
 	nick := member.Nick
@@ -284,6 +246,7 @@ func (s *Service) moveHandler(d *Session, m *MessageCreate, payload string) {
 		Content:    prevMessage.Content,
 		Username:   nick,
 		Files:      files,
+		AvatarURL:  prevMessage.Author.AvatarURL(""),
 		Components: prevMessage.Components,
 		Embeds:     prevMessage.Embeds,
 	})

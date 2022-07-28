@@ -21,6 +21,7 @@ type GuildConfig struct {
 	APIAnnouncementChannelID string            `yaml:"APIAnnouncementChannelID"`
 	NamedRoles               map[string]string `yaml:"NamedRoles"`
 	MuzzledUsers             map[string]int64  `yaml:"MuzzledUsers"`
+	Webhooks                 map[string]string `yaml:"Webhooks"`
 }
 
 func (g GuildConfig) String() string {

@@ -2,13 +2,13 @@ package discord
 
 import (
 	"fmt"
-	"sort"
-	"strings"
-
 	"golang.org/x/exp/slices"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+	"sort"
+	"strings"
 
+	"github.com/Neo-Desktop/emojipasta"
 	"github.com/bwmarrin/discordgo"
 	owo "github.com/deadshot465/owoify-go/v2"
 )
@@ -36,21 +36,33 @@ func (s *Service) registerHandlers() {
 	})
 	s.commands.Register(Command{
 		Name:    "owo",
-		Handler: s.owoHandler,
+		Handler: s.textTransformHandler,
 		Summary: "Turns ywour text intwo swomwething owo-ifwied.",
-		Usage:   "owo <text>",
+		Usage:   "owo [-me] <text>",
 	})
 	s.commands.Register(Command{
 		Name:    "uwu",
-		Handler: s.owoHandler,
+		Handler: s.textTransformHandler,
 		Summary: "Tuwns ywouw text intwo swomwefwing owo-ifwied(o･ω･o).",
-		Usage:   "uwu <text>",
+		Usage:   "uwu [-me] <text>",
 	})
 	s.commands.Register(Command{
 		Name:    "uvu",
-		Handler: s.owoHandler,
+		Handler: s.textTransformHandler,
 		Summary: "Tuwns ywowouw text indwowo swowomwefwing owowowo-ifwieduwu.",
-		Usage:   "uvu <text>",
+		Usage:   "uvu [-me] <text>",
+	})
+	s.commands.Register(Command{
+		Name:    "emojipasta",
+		Handler: s.textTransformHandler,
+		Summary: "Turns😖 your👅👺⛓ text📱😤 into🔍👉 something💝🚫👤 emojipasta-ified.",
+		Usage:   "emojipasta [-me] <text>",
+	})
+	s.commands.Register(Command{
+		Name:    "sarcasm",
+		Handler: s.textTransformHandler,
+		Summary: "TuRnS YoUr tExT InTo sOmEtHiNg sArCaStIc-iFiEd",
+		Usage:   "sarcasm [-me] <text>",
 	})
 
 	s.registerAdminHandlers()
@@ -142,7 +154,7 @@ func (s *Service) commandsHandler(d *Session, m *MessageCreate, payload string) 
 			Fields: fields,
 		}
 
-		_, err := d.ChannelMessageSendEmbed(m.ChannelID, embed)
+		_, err := s.ChannelMessageSend(m.ChannelID, embed)
 		if err != nil {
 			s.Logln("error sending commands message:", err)
 			return
@@ -164,7 +176,7 @@ func (s *Service) commandsHandler(d *Session, m *MessageCreate, payload string) 
 		Fields: fields,
 	}
 
-	_, err = d.ChannelMessageSendEmbed(m.ChannelID, embed)
+	_, err = s.ChannelMessageSend(m.ChannelID, embed)
 	if err != nil {
 		s.Logln("error sending commands message:", err)
 		return
@@ -184,28 +196,205 @@ func (s *Service) pingHandler(d *Session, m *MessageCreate, payload string) {
 	}
 }
 
-func (s *Service) owoHandler(d *Session, m *MessageCreate, payload string) {
+func (s *Service) textTransformOwo(payload string, owoness owo.Owoness) string {
+	return owo.Owoify(payload, owoness)
+}
+
+func (s *Service) textTransformSarcasm(payload string) string {
 	var (
-		owoness owo.Owoness
-		output  string
+		upper    = strings.ToUpper(payload)
+		lower    = strings.ToLower(payload)
+		bPayload = []byte(payload)
 	)
 
+	for k := range bPayload {
+		if k%2 == 0 {
+			bPayload[k] = upper[k]
+		} else {
+			bPayload[k] = lower[k]
+		}
+	}
+
+	return string(bPayload)
+}
+
+func (s *Service) textTransformEmojipasta(payload string) string {
+	return emojipasta.Generate(strings.Split(payload, " "), 3, false)
+}
+
+func (s *Service) textTransformHandler(d *Session, m *MessageCreate, payload string) {
+	var (
+		owoness owo.Owoness
+		flagMe  bool
+	)
+
+	member, err := d.State.Member(m.GuildID, m.Author.ID)
+	if err != nil {
+		s.Logln("error getting member:", err)
+		return
+	}
+
+	if m.ReferencedMessage == nil {
+		p := strings.Split(payload, " ")
+
+		for _, v := range p {
+			if len(v) == 0 || v[0] != '-' {
+				// stop parsing if we hit a non-flag
+				break
+			}
+
+			switch v[1:] {
+			case "me":
+				flagMe = true
+				p = p[1:]
+			}
+		}
+
+		payload = strings.Join(p, " ")
+		payload = strings.TrimSpace(payload)
+	} else {
+		payload = m.ReferencedMessage.Content
+	}
+
 	switch m.Command.Name {
+	case "emojipasta":
+		if len(payload) == 0 {
+			title := "Usage✔"
+
+			payload = fmt.Sprintf("error: please specify some text to %s-ify", m.Command.Name)
+			payload = s.textTransformEmojipasta(payload)
+
+			_, err = s.ChannelMessageSend(m.ChannelID, s.BuildDefaultEmbed(title, payload))
+			if err != nil {
+				s.Logln("error sending usage message:", err)
+			}
+
+			return
+		}
+
+		payload = s.textTransformEmojipasta(payload)
+
+	case "sarcasm":
+		if len(payload) == 0 {
+			title := "Usage"
+			title = s.textTransformSarcasm(title)
+
+			payload = fmt.Sprintf("error: please specify some text to %s-ify", m.Command.Name)
+			payload = s.textTransformSarcasm(payload)
+
+			_, err = s.ChannelMessageSend(m.ChannelID, s.BuildDefaultEmbed(title, payload))
+			if err != nil {
+				s.Logln("error sending usage message:", err)
+			}
+
+			return
+		}
+
+		payload = s.textTransformSarcasm(payload)
+
 	case "owo":
-		owoness = owo.Owo
+		fallthrough
 	case "uwu":
-		owoness = owo.Uwu
+		fallthrough
 	case "uvu":
-		owoness = owo.Uvu
+		{
+			switch m.Command.Name {
+			case "owo":
+				owoness = owo.Owo
+			case "uwu":
+				owoness = owo.Uwu
+			case "uvu":
+				owoness = owo.Uvu
+			}
+
+			if len(payload) == 0 {
+				title := "Uwusawage"
+				title = s.textTransformOwo(title, owoness)
+
+				payload = fmt.Sprintf("error: please specify some text to %s-ify", m.Command.Name)
+				payload = s.textTransformOwo(payload, owoness)
+
+				_, err = s.ChannelMessageSend(m.ChannelID, s.BuildDefaultEmbed(title, payload))
+				if err != nil {
+					s.Logln("error sending usage message:", err)
+				}
+
+				return
+			}
+
+			payload = s.textTransformOwo(payload, owoness)
+		}
 	}
 
-	if len(payload) == 0 {
-		payload = fmt.Sprintf("error: please specify some text to %s", m.Command.Name)
+	if !flagMe {
+		if len(payload) >= 1999 {
+			var payloads []string
+			for len(payload) > 1999 {
+				payloads = append(payloads, payload[:1999])
+				payload = payload[1999:]
+			}
+			payloads = append(payloads, payload)
+
+			for _, p := range payloads {
+				_, err = d.Session.ChannelMessageSend(m.ChannelID, p)
+				if err != nil {
+					s.Logln("error sending message:", err)
+				}
+			}
+			return
+		}
+
+		_, err = d.Session.ChannelMessageSend(m.ChannelID, payload)
+		if err != nil {
+			s.Logln("error sending message:", err)
+		}
+
+		return
 	}
 
-	output = owo.Owoify(payload, owoness)
+	webhook, err := d.CreateOrFetchChannelWebhook(m.GuildID, m.ChannelID)
+	if err != nil {
+		s.Logln("error creating webhook:", err)
+		return
+	}
 
-	_, err := d.ChannelMessageMentionSend(m.ChannelID, m.Author, output)
+	err = d.ChannelMessageDelete(m.ChannelID, m.ID)
+	if err != nil {
+		s.Logln("error deleting message:", err)
+		return
+	}
+
+	nick := member.Nick
+	if nick == "" {
+		nick = member.User.Username
+	}
+
+	if len(payload) >= 1999 {
+		var payloads []string
+		for len(payload) > 1999 {
+			payloads = append(payloads, payload[:1999])
+			payload = payload[1999:]
+		}
+		payloads = append(payloads, payload)
+
+		for _, p := range payloads {
+			_, err = d.WebhookExecute(webhook.ID, webhook.Token, false, &discordgo.WebhookParams{
+				Content:   p,
+				Username:  nick,
+				AvatarURL: member.AvatarURL(""),
+			})
+			if err != nil {
+				s.Logln("error sending message:", err)
+			}
+		}
+		return
+	}
+
+	_, err = d.WebhookExecute(webhook.ID, webhook.Token, false, &discordgo.WebhookParams{
+		Content:   payload,
+		Username:  nick,
+		AvatarURL: member.AvatarURL(""),
+	})
 	if err != nil {
 		s.Logln("error sending message:", err)
 	}

@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/exp/maps"
+
 	"github.com/StarsiegePlayers/DiscordBot/config"
 	"github.com/StarsiegePlayers/DiscordBot/module"
 	"github.com/StarsiegePlayers/DiscordBot/rpc"
@@ -23,7 +25,7 @@ type Service struct {
 
 	wg       sync.WaitGroup
 	commands Commands
-	session  *discordgo.Session
+	session  *Session
 
 	config *config.DiscordConfig
 
@@ -41,7 +43,7 @@ func (s *Service) Init() {
 	s.registerHandlers()
 
 	s.RPCSubscribe(rpc.DiscordMessageSendTopic, s.discordMessageSendRPCHandler)
-	s.RPCSubscribe(rpc.APIRequestResponse, s.apiRequestResponseRPCHandler)
+	s.RPCSubscribe(rpc.APIResponse, s.apiResponseRPCHandler)
 	s.RPCSubscribe(rpc.NewConfigLoadedTopic, s.configMessageRPCHandler)
 }
 
@@ -49,7 +51,10 @@ func (s *Service) Start() (err error) {
 	// wait for config
 	s.wg.Wait()
 
-	s.session, err = discordgo.New("Bot " + s.config.AuthToken)
+	s.session = new(Session)
+	s.session.service = s
+
+	s.session.Session, err = discordgo.New("Bot " + s.config.AuthToken)
 	if err != nil {
 		return err
 	}
@@ -86,13 +91,6 @@ func (s *Service) isMentioned(input []*discordgo.User, compare *discordgo.User) 
 	return false
 }
 
-func (s *Service) sendUsageMessage(d *Session, m *MessageCreate) {
-	_, err := d.ChannelMessageMentionSend(m.ChannelID, m.Author, s.formatUsageMessage(d.GuildConfig.CommandPrefix, m.Command.Usage))
-	if err != nil {
-		s.Logf("(%s) error while sending usage message: %s", m.Guild.Name, err)
-	}
-}
-
 func (s *Service) memberHasPermission(d *Session, guildID string, userID string, permission int64) (bool, error) {
 	member, err := d.State.Member(guildID, userID)
 	if err != nil {
@@ -114,8 +112,44 @@ func (s *Service) memberHasPermission(d *Session, guildID string, userID string,
 	return false, nil
 }
 
-func (s *Service) formatUsageMessage(commandPrefix string, usage string) string {
-	return fmt.Sprintf("Usage: `%s%s`", commandPrefix, usage)
+func (s *Service) BuildDefaultEmbed(title string, text string) *discordgo.MessageEmbed {
+	return &discordgo.MessageEmbed{
+		Color: DefaultColor,
+		Fields: []*discordgo.MessageEmbedField{{
+			Name:  title,
+			Value: text,
+		}},
+	}
+}
+
+func (s *Service) ChannelMessageSend(channelID string, message interface{}) (*discordgo.Message, error) {
+	var m *discordgo.MessageEmbed
+
+	switch message := message.(type) {
+	case string:
+		m = s.BuildDefaultEmbed("Usage", message)
+
+	case *discordgo.MessageEmbed:
+		m = message
+
+	case discordgo.MessageEmbed:
+		m = &message
+	}
+
+	return s.session.ChannelMessageSendEmbed(channelID, m)
+}
+
+func (s *Service) ChannelMessageMentionSend(channelID string, user *discordgo.User, message string) (*discordgo.Message, error) {
+	message = fmt.Sprintf("%s: %s", user.Mention(), message)
+
+	return s.ChannelMessageSend(channelID, message)
+}
+
+func (s *Service) sendUsageMessage(d *Session, m *MessageCreate) {
+	_, err := s.ChannelMessageMentionSend(m.ChannelID, m.Author, fmt.Sprintf("Usage: `%s%s`", d.GuildConfig.CommandPrefix, m.Command.Usage))
+	if err != nil {
+		s.Logf("(%s) error while sending usage message: %s", m.Guild.Name, err)
+	}
 }
 
 func (s *Service) messageDispatcher(d *discordgo.Session, m *discordgo.MessageCreate) {
@@ -129,6 +163,7 @@ func (s *Service) messageDispatcher(d *discordgo.Session, m *discordgo.MessageCr
 	session := &Session{
 		Session:     d,
 		GuildConfig: cfg,
+		service:     s,
 	}
 
 	// did we receive a command?
@@ -191,7 +226,7 @@ func (s *Service) initMessage(*discordgo.Session, *discordgo.Ready) {
 			return
 		}
 
-		_, err = s.session.ChannelMessageSend(dm.ID, fmt.Sprintf("[%s] - bot is online", time.Now().Format(time.ANSIC)))
+		_, err = s.ChannelMessageSend(dm.ID, fmt.Sprintf("[%s] - bot is online", time.Now().Format(time.ANSIC)))
 		if err != nil {
 			s.Logln("error sending init message:", err)
 			return
@@ -202,6 +237,20 @@ func (s *Service) initMessage(*discordgo.Session, *discordgo.Ready) {
 		if cfg, ok := s.config.Guilds[v.ID]; ok {
 			// we have a guild config, perform muzzle maintenance
 			s.muzzleMaintenance(v.ID, cfg)
+
+			// pull latest webhooks
+			maps.Clear(s.config.Guilds[v.ID].Webhooks)
+
+			webhooks, err := s.session.GuildWebhooks(v.ID)
+			if err != nil {
+				s.Logln("error fetching webhooks", err)
+			}
+
+			for _, hook := range webhooks {
+				if hook.ApplicationID == s.config.ApplicationID {
+					s.config.Guilds[v.ID].Webhooks[hook.ChannelID] = hook.ID
+				}
+			}
 		}
 
 		s.Logf("Guild Registered: %s(%s)", v.Name, v.ID)
@@ -219,5 +268,7 @@ func (s *Service) initMessage(*discordgo.Session, *discordgo.Ready) {
 
 		s.Logf("Channels for %s: %s", v.Name, strings.Join(out, ", "))
 	}
+
+	s.sendRPCConfigUpdate()
 
 }

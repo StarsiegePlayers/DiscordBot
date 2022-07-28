@@ -37,8 +37,7 @@ func (s *Service) Start() error {
 	// wait for config
 	s.wg.Wait()
 
-	s.alarmCallback(s.Base, func() {})
-	s.RPCSubscribe(rpc.APIRequestLatest, s.apiRequestLatestRPCHandler)
+	s.alarmCallback(s.Context, func() {})
 
 	return nil
 }
@@ -64,7 +63,6 @@ func (s *Service) requestServerList() (list rpc.ServerListData, err error) {
 	defer res.Body.Close()
 
 	lastpudated := res.Header.Get("Last-Modified")
-	s.Logf("Last-Modified: %s", lastpudated)
 
 	APILastUpdated, err := time.Parse(time.RFC1123, lastpudated)
 	if err != nil {
@@ -72,7 +70,7 @@ func (s *Service) requestServerList() (list rpc.ServerListData, err error) {
 		APILastUpdated = time.Now()
 	}
 
-	s.Base.NewAlarm(s.Base, APILastUpdated, time.Duration(s.config.PollTimeMinutes)*time.Minute, s.alarmCallback)
+	s.Base.NewAlarm(s.Context, APILastUpdated, time.Duration(s.config.PollTimeMinutes)*time.Minute, s.alarmCallback)
 
 	body := json.NewDecoder(res.Body)
 
@@ -81,11 +79,21 @@ func (s *Service) requestServerList() (list rpc.ServerListData, err error) {
 		return
 	}
 
-	if len(s.APIHistory) > 0 {
+	if len(s.APIHistory)+1 > 5 {
 		s.APIHistory = s.APIHistory[0:]
 	}
 
 	s.APIHistory = append(s.APIHistory, list)
+
+	jsonAPIHistory, err := json.Marshal(s.APIHistory)
+	if err != nil {
+		s.Logln("error marshaling json api history", err)
+	}
+
+	err = s.RPCPublish(rpc.APIResponse, jsonAPIHistory)
+	if err != nil {
+		s.Logln("error publishing updated api history", err)
+	}
 
 	return
 }
